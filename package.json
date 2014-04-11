@@ -1,0 +1,23 @@
+{
+  "name": "pstream",
+  "version": "0.0.0",
+  "description": "parallel streams",
+  "keywords": [
+    "parallel",
+    "streams"
+  ],
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "author": "Calvin Metcalf",
+  "license": "MIT",
+  "dependencies": {
+    "readable-stream": "^1.0.26-4",
+    "inherits": "^2.0.1"
+  },
+  "devDependencies": {
+    "tape": "^2.12.3",
+    "through2": "^0.4.1"
+  }
+}
