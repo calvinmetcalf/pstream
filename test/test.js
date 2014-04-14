@@ -15,14 +15,60 @@ function makeData(x) {
 }
 
 test('it works', function (t) {
-  var stream = new PStream(path.join(__dirname, './example'), 3, {
+  var stream = new PStream({
     objectMode: true
+  }, function (chunk, _, next) {
+    this.push({
+      number: chunk,
+    });
+    var self = this;
+    setTimeout(function () {
+      self.push({
+        number: chunk,
+      });
+      next();
+    }, 10);
   });
-  t.plan(30);
+  var last = -1;
+  var smaller;
   makeData(15).pipe(stream).pipe(through(function (chunk, _, next) {
-    t.ok(true, JSON.stringify(chunk, null, 4));
+    if (last > chunk.number) {
+      smaller = true;
+    }
+    last = chunk.number;
     next();
   }, function (next) {
+    t.ok(smaller, 'should be out of order');
+    t.end();
+    next();
+  }));
+});
+test('configurable number of processes', function (t) {
+  var stream = PStream({
+    objectMode: true,
+    number: 1
+  }, function (chunk, _, next) {
+    this.push({
+      number: chunk,
+    });
+    var self = this;
+    setTimeout(function () {
+      self.push({
+        number: chunk,
+      });
+      next();
+    }, 10);
+  });
+  var last = -1;
+  var smaller;
+  makeData(15).pipe(stream).pipe(through(function (chunk, _, next) {
+    if (last > chunk.number) {
+      smaller = true;
+    }
+    last = chunk.number;
+    next();
+  }, function (next) {
+    t.ok(!smaller, 'should be out of order');
     t.end();
     next();
   }));

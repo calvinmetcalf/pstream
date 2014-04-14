@@ -1,88 +1,89 @@
 'use strict';
 var inherits = require('inherits');
 var Transform = require('readable-stream').Transform;
-var fork =  require('child_process').fork;
 
 inherits(PStream, Transform);
 module.exports = PStream;
 
-function PStream(script, number, opts) {
-  if (typeof number !== 'number') {
-    opts = number;
-    number = 3;
+function PStream(opts, transform, flush) {
+  if (!(this instanceof PStream)) {
+    return new PStream(opts, transform, flush);
   }
-  opts = opts || {};
+  if (typeof opts === 'function') {
+    flush = transform;
+    transform = opts;
+    opts = {};
+  }
+  if (typeof opts === 'number') {
+    opts = {
+      number: opts
+    };
+  }
   Transform.call(this, opts);
-  this.script = script;
-  this.children = [];
-  this.opts = opts;
-  var i = -1;
-  this.available = [];
+  this.available = opts.number || 3;
   this.pending = 0;
-  while (++i < number) {
-    this.makeChild(i);
-  }
+  this.__transform = transform;
+  this.__flush = flush;
 }
-PStream.prototype.makeChild = function (i) {
-  var self = this;
-  this.children[i] = fork('./script.js', [this.script]);
-  
-  this.children[i].on('message', function (e) {
-    if (e.type === 'push') {
-      self.push(e.data);
-    } else if (e.type === 'error') {
-      self.emit('error', e.data);
-    } else if (e.type === 'done') {
-      if (typeof e.data !== 'undefined') {
-        self.push(e.data);
-      }
-      self.next(i);
-    }
-  });
-  this.available.push(i);
-};
 PStream.prototype.next = function (i) {
-  this.available.push(i);
+  this.available++;
   this.pending--;
-  this.emit('availableChildren');
+  this.emit('chunkFinished');
 };
 PStream.prototype.cleanUp = function () {
   this.children.forEach(function (child) {
     child.kill();
   }, this);
 };
-PStream.prototype.dealChunk = function (i, chunk, _, next) {
+PStream.prototype.dealChunk = function (chunk, _, next) {
+  var self = this;
+  this.available--;
   this.pending++;
-  this.children[i].send({
-    chunk: chunk,
-    encoding: _,
-    type: 'data'
+  this.__transform.call({
+    push: function (thing) {
+      self.push(thing);
+    }
+  }, chunk, _, function (err, data) {
+    if (err) {
+      self.emit('error', err);
+    } else {
+      if (data !== null && data !== undefined) {
+        self.push(data);
+      }
+      self.next();
+    }
   });
   next();
 };
 PStream.prototype._transform = function (chunk, _, next) {
   var self = this;
-  if (this.available.length) {
-    this.dealChunk(this.available.shift(), chunk, _, next);
+  if (this.available) {
+    this.dealChunk(chunk, _, next);
   } else {
-    this.once('availableChildren', function () {
-      if (self.available.length) {
-        self.dealChunk(self.available.shift(), chunk, _, next);
+    this.once('chunkFinished', function () {
+      if (self.available) {
+        self.dealChunk(chunk, _, next);
       }
     });
+  }
+};
+PStream.prototype.cleanUp = function (next) {
+  this.removeAllListeners('chunkFinished');
+  if (typeof this.__flush === 'function') {
+    this.__flush(next);
+  } else {
+    next();
   }
 };
 PStream.prototype._flush = function (next) {
   var self = this;
   if (this.pending) {
-    this.on('availableChildren', function () {
+    this.on('chunkFinished', function () {
       if (!self.pending) {
-        self.cleanUp();
-        next();
+        self.cleanUp(next);
       }
     });
   } else {
-    this.cleanUp();
-    next();
+    this.cleanUp(next);
   }
 };
