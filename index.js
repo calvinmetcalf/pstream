@@ -25,16 +25,12 @@ function PStream(opts, transform, flush) {
   this.__transform = transform;
   this.__flush = flush;
 }
-PStream.prototype.next = function (i) {
+PStream.prototype.next = function () {
   this.available++;
   this.pending--;
   this.emit('chunkFinished');
 };
-PStream.prototype.cleanUp = function () {
-  this.children.forEach(function (child) {
-    child.kill();
-  }, this);
-};
+
 PStream.prototype.dealChunk = function (chunk, _, next) {
   var self = this;
   this.available--;
